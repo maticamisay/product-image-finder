@@ -1,36 +1,65 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Product Image Finder
 
-## Getting Started
+Herramienta para buscar y gestionar imágenes de productos a partir de un listado Excel.
 
-First, run the development server:
+## Funcionalidades
+
+- **Importar Excel**: Sube un archivo Excel con nombres de productos
+- **Búsqueda automática**: Busca 3 imágenes por producto usando DuckDuckGo
+- **Previsualización**: Interfaz web para ver todas las imágenes encontradas
+- **Selección**: Elige qué imágenes quieres conservar para cada producto
+- **Exportar**: Descarga un Excel o JSON con los productos y sus imágenes seleccionadas
+
+## Requisitos
+
+- Node.js 18+
+- npm
+
+## Instalación
+
+```bash
+npm install
+```
+
+## Uso
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Abrir http://localhost:3000
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Flujo de trabajo
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. **Subir Excel** - El archivo debe tener una columna con nombres de productos (busca automáticamente columnas llamadas "nombre", "product" o "name")
 
-## Learn More
+2. **Buscar imágenes** - Puedes buscar para todos los productos a la vez o uno por uno
 
-To learn more about Next.js, take a look at the following resources:
+3. **Seleccionar** - Haz clic en las imágenes para seleccionar/deseleccionar
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+4. **Exportar** - Descarga el resultado en Excel o JSON para usar en Middas
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Estructura del Excel
 
-## Deploy on Vercel
+El Excel de entrada solo necesita una columna con nombres de productos:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+| Nombre |
+|--------|
+| Coca Cola 500ml |
+| Pan Bimbo |
+| Leche La Serenísima |
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## API Endpoints
+
+- `POST /api/upload` - Subir Excel
+- `GET /api/products` - Listar productos
+- `POST /api/search` - Buscar imágenes para un producto
+- `PUT /api/search` - Buscar imágenes para todos
+- `GET /api/images?productId=X` - Ver imágenes de un producto
+- `PATCH /api/images` - Cambiar selección de imagen
+- `GET /api/export?format=json|excel` - Exportar datos
+
+## Datos
+
+- Base de datos SQLite: `data/products.db`
+- Imágenes descargadas: `public/images/`

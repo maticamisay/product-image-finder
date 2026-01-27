@@ -1,65 +1,331 @@
-import Image from "next/image";
+'use client';
+
+import { useState, useEffect, useCallback } from 'react';
+import { Upload, Search, Download, Trash2, Check, X, RefreshCw, Image as ImageIcon } from 'lucide-react';
+
+interface Product {
+  id: string;
+  name: string;
+  imageCount: number;
+  selectedCount: number;
+}
+
+interface ProductImage {
+  id: string;
+  product_id: string;
+  url: string;
+  local_path: string | null;
+  selected: number;
+}
 
 export default function Home() {
+  const [products, setProducts] = useState<Product[]>([]);
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [productImages, setProductImages] = useState<ProductImage[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [searchingAll, setSearchingAll] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState<string>('');
+
+  const fetchProducts = useCallback(async () => {
+    const res = await fetch('/api/products');
+    const data = await res.json();
+    setProducts(data.products || []);
+  }, []);
+
+  const fetchProductImages = useCallback(async (productId: string) => {
+    const res = await fetch(`/api/images?productId=${productId}`);
+    const data = await res.json();
+    setProductImages(data.images || []);
+  }, []);
+
+  useEffect(() => {
+    fetchProducts();
+  }, [fetchProducts]);
+
+  useEffect(() => {
+    if (selectedProduct) {
+      fetchProductImages(selectedProduct.id);
+    }
+  }, [selectedProduct, fetchProductImages]);
+
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setLoading(true);
+    setUploadStatus('Procesando archivo...');
+
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('clear', 'true');
+
+    try {
+      const res = await fetch('/api/upload', { method: 'POST', body: formData });
+      const data = await res.json();
+
+      if (data.success) {
+        setUploadStatus(`✓ ${data.count} productos importados (columna: ${data.columnUsed})`);
+        fetchProducts();
+      } else {
+        setUploadStatus(`Error: ${data.error}`);
+      }
+    } catch (err) {
+      setUploadStatus('Error al procesar archivo');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const searchProductImages = async (productId: string) => {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productId, count: 3 })
+      });
+      const data = await res.json();
+      
+      if (selectedProduct?.id === productId) {
+        fetchProductImages(productId);
+      }
+      fetchProducts();
+    } catch (err) {
+      console.error('Search error:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const searchAllProducts = async () => {
+    setSearchingAll(true);
+    try {
+      const res = await fetch('/api/search', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ count: 3 })
+      });
+      await res.json();
+      fetchProducts();
+      if (selectedProduct) {
+        fetchProductImages(selectedProduct.id);
+      }
+    } catch (err) {
+      console.error('Search all error:', err);
+    } finally {
+      setSearchingAll(false);
+    }
+  };
+
+  const toggleImageSelection = async (imageId: string, currentSelected: boolean) => {
+    await fetch('/api/images', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ imageId, selected: !currentSelected })
+    });
+    
+    if (selectedProduct) {
+      fetchProductImages(selectedProduct.id);
+      fetchProducts();
+    }
+  };
+
+  const deleteProduct = async (productId: string) => {
+    if (!confirm('¿Eliminar este producto y sus imágenes?')) return;
+    
+    await fetch(`/api/products?id=${productId}`, { method: 'DELETE' });
+    
+    if (selectedProduct?.id === productId) {
+      setSelectedProduct(null);
+      setProductImages([]);
+    }
+    fetchProducts();
+  };
+
+  const exportData = async (format: 'json' | 'excel') => {
+    if (format === 'excel') {
+      window.open('/api/export?format=excel', '_blank');
+    } else {
+      const res = await fetch('/api/export?format=json');
+      const data = await res.json();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'productos-imagenes.json';
+      a.click();
+    }
+  };
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+    <main className="min-h-screen bg-gray-900 text-white p-6">
+      <div className="max-w-7xl mx-auto">
+        <h1 className="text-3xl font-bold mb-8 flex items-center gap-3">
+          <ImageIcon className="w-8 h-8 text-blue-400" />
+          Product Image Finder
+        </h1>
+
+        {/* Upload Section */}
+        <div className="bg-gray-800 rounded-xl p-6 mb-6">
+          <h2 className="text-xl font-semibold mb-4">1. Subir Excel</h2>
+          <div className="flex flex-wrap gap-4 items-center">
+            <label className="flex items-center gap-2 px-4 py-2 bg-blue-600 rounded-lg cursor-pointer hover:bg-blue-700 transition">
+              <Upload className="w-5 h-5" />
+              Seleccionar archivo
+              <input type="file" accept=".xlsx,.xls,.csv" onChange={handleUpload} className="hidden" />
+            </label>
+            
+            {uploadStatus && (
+              <span className={`text-sm ${uploadStatus.startsWith('✓') ? 'text-green-400' : uploadStatus.startsWith('Error') ? 'text-red-400' : 'text-gray-400'}`}>
+                {uploadStatus}
+              </span>
+            )}
+          </div>
+          <p className="text-gray-400 text-sm mt-2">
+            Excel debe tener una columna con nombres de productos (busca: nombre, product, name)
           </p>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+
+        {/* Actions */}
+        <div className="bg-gray-800 rounded-xl p-6 mb-6">
+          <h2 className="text-xl font-semibold mb-4">2. Buscar imágenes</h2>
+          <div className="flex flex-wrap gap-4">
+            <button
+              onClick={searchAllProducts}
+              disabled={searchingAll || products.length === 0}
+              className="flex items-center gap-2 px-4 py-2 bg-green-600 rounded-lg hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {searchingAll ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Search className="w-5 h-5" />}
+              {searchingAll ? 'Buscando...' : 'Buscar imágenes para todos'}
+            </button>
+            
+            <button
+              onClick={() => exportData('excel')}
+              disabled={products.length === 0}
+              className="flex items-center gap-2 px-4 py-2 bg-purple-600 rounded-lg hover:bg-purple-700 transition disabled:opacity-50"
+            >
+              <Download className="w-5 h-5" />
+              Exportar Excel
+            </button>
+            
+            <button
+              onClick={() => exportData('json')}
+              disabled={products.length === 0}
+              className="flex items-center gap-2 px-4 py-2 bg-gray-600 rounded-lg hover:bg-gray-700 transition disabled:opacity-50"
+            >
+              <Download className="w-5 h-5" />
+              Exportar JSON
+            </button>
+          </div>
         </div>
-      </main>
-    </div>
+
+        {/* Main Content */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Products List */}
+          <div className="bg-gray-800 rounded-xl p-6">
+            <h2 className="text-xl font-semibold mb-4">
+              Productos ({products.length})
+            </h2>
+            <div className="space-y-2 max-h-[600px] overflow-y-auto">
+              {products.map(product => (
+                <div
+                  key={product.id}
+                  onClick={() => setSelectedProduct(product)}
+                  className={`p-3 rounded-lg cursor-pointer transition flex justify-between items-center ${
+                    selectedProduct?.id === product.id 
+                      ? 'bg-blue-600' 
+                      : 'bg-gray-700 hover:bg-gray-600'
+                  }`}
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="truncate font-medium">{product.name}</p>
+                    <p className="text-sm text-gray-400">
+                      {product.imageCount > 0 
+                        ? `${product.selectedCount}/${product.imageCount} seleccionadas`
+                        : 'Sin imágenes'}
+                    </p>
+                  </div>
+                  <div className="flex gap-2 ml-2">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); searchProductImages(product.id); }}
+                      className="p-1.5 rounded bg-gray-600 hover:bg-gray-500"
+                      title="Buscar imágenes"
+                    >
+                      <Search className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); deleteProduct(product.id); }}
+                      className="p-1.5 rounded bg-red-600/50 hover:bg-red-600"
+                      title="Eliminar"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+              
+              {products.length === 0 && (
+                <p className="text-gray-400 text-center py-8">
+                  Sube un archivo Excel para comenzar
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Image Preview */}
+          <div className="lg:col-span-2 bg-gray-800 rounded-xl p-6">
+            <h2 className="text-xl font-semibold mb-4">
+              {selectedProduct 
+                ? `Imágenes: ${selectedProduct.name}`
+                : 'Selecciona un producto'}
+            </h2>
+            
+            {selectedProduct ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                {productImages.map(image => (
+                  <div
+                    key={image.id}
+                    className={`relative rounded-lg overflow-hidden border-2 transition ${
+                      image.selected ? 'border-green-500' : 'border-transparent opacity-50'
+                    }`}
+                  >
+                    <img
+                      src={image.local_path || image.url}
+                      alt=""
+                      className="w-full h-48 object-cover"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src = image.url;
+                      }}
+                    />
+                    <button
+                      onClick={() => toggleImageSelection(image.id, image.selected === 1)}
+                      className={`absolute top-2 right-2 p-2 rounded-full transition ${
+                        image.selected 
+                          ? 'bg-green-500 hover:bg-green-600' 
+                          : 'bg-gray-600 hover:bg-gray-500'
+                      }`}
+                    >
+                      {image.selected ? <Check className="w-4 h-4" /> : <X className="w-4 h-4" />}
+                    </button>
+                  </div>
+                ))}
+                
+                {productImages.length === 0 && (
+                  <div className="col-span-full text-center py-12 text-gray-400">
+                    <ImageIcon className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                    <p>No hay imágenes. Haz clic en buscar para encontrar imágenes.</p>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="text-center py-12 text-gray-400">
+                <ImageIcon className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                <p>Selecciona un producto de la lista para ver sus imágenes</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </main>
   );
 }
