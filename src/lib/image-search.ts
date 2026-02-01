@@ -9,19 +9,74 @@ export interface SearchResult {
 
 export type SearchSource = 'duckduckgo' | 'mercadolibre';
 
+// Cache del token de ML
+let mlTokenCache: { token: string; expiresAt: number } | null = null;
+
+/**
+ * Obtiene un access token de ML usando client_credentials
+ */
+async function getMLToken(): Promise<string | null> {
+  // Si hay token en cache y no expiró, usarlo
+  if (mlTokenCache && Date.now() < mlTokenCache.expiresAt) {
+    return mlTokenCache.token;
+  }
+
+  const appId = process.env.ML_APP_ID;
+  const clientSecret = process.env.ML_CLIENT_SECRET;
+
+  if (!appId || !clientSecret) {
+    return null;
+  }
+
+  try {
+    const response = await fetch('https://api.mercadolibre.com/oauth/token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({
+        grant_type: 'client_credentials',
+        client_id: appId,
+        client_secret: clientSecret,
+      }),
+    });
+
+    const data = await response.json();
+
+    if (data.access_token) {
+      mlTokenCache = {
+        token: data.access_token,
+        expiresAt: Date.now() + (5 * 60 * 60 * 1000), // 5 horas
+      };
+      return data.access_token;
+    }
+  } catch (error) {
+    console.error('Error getting ML token:', error);
+  }
+
+  return null;
+}
+
 /**
  * Busca imágenes de productos en Mercado Libre Argentina
- * Usa la API pública de ML (funciona desde PCs normales, no desde datacenters)
+ * Intenta con autenticación primero, luego sin ella
  */
 export async function searchMercadoLibre(query: string, count: number = 3): Promise<SearchResult[]> {
   try {
+    // Intentar obtener token
+    const token = await getMLToken();
+    
+    const headers: Record<string, string> = {
+      'Accept': 'application/json',
+    };
+    
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
     const response = await fetch(
       `https://api.mercadolibre.com/sites/MLA/search?q=${encodeURIComponent(query)}&limit=${count}`,
-      {
-        headers: {
-          'Accept': 'application/json',
-        }
-      }
+      { headers }
     );
 
     if (!response.ok) {
