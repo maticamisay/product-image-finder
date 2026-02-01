@@ -10,24 +10,48 @@ export interface SearchResult {
 export type SearchSource = 'duckduckgo' | 'mercadolibre';
 
 /**
- * Busca imágenes de productos en Mercado Libre
- * Usa DuckDuckGo con filtro de sitio para obtener imágenes de ML
- * (La API directa de ML requiere autenticación)
+ * Busca imágenes de productos en Mercado Libre Argentina
+ * Usa la API pública de ML (funciona desde PCs normales, no desde datacenters)
  */
 export async function searchMercadoLibre(query: string, count: number = 3): Promise<SearchResult[]> {
-  // Buscar en DuckDuckGo con el término + "mercado libre" para obtener imágenes de productos ML
-  const mlQuery = `${query} mercado libre producto`;
-  
-  const results = await searchDuckDuckGo(mlQuery, count);
-  
-  if (results.length > 0) {
-    console.log(`Found ${results.length} ML-related images for: ${query}`);
+  try {
+    const response = await fetch(
+      `https://api.mercadolibre.com/sites/MLA/search?q=${encodeURIComponent(query)}&limit=${count}`,
+      {
+        headers: {
+          'Accept': 'application/json',
+        }
+      }
+    );
+
+    if (!response.ok) {
+      console.error('Mercado Libre API error:', response.status);
+      // Fallback a Bing si ML falla
+      return searchBing(query, count);
+    }
+
+    const data = await response.json();
+
+    if (!data.results || data.results.length === 0) {
+      console.log('No results from ML, falling back to Bing');
+      return searchBing(query, count);
+    }
+
+    const results: SearchResult[] = data.results.slice(0, count).map((product: any) => ({
+      id: uuidv4(),
+      // Convertir thumbnail a alta calidad (-I.jpg -> -O.jpg)
+      url: product.thumbnail?.replace('-I.jpg', '-O.jpg') || product.thumbnail,
+      thumbnail: product.thumbnail,
+      title: product.title || query
+    }));
+
+    console.log(`Found ${results.length} images from Mercado Libre for: ${query}`);
     return results;
+  } catch (error) {
+    console.error('Mercado Libre search error:', error);
+    // Fallback a Bing
+    return searchBing(query, count);
   }
-  
-  // Fallback: búsqueda normal si no encuentra nada
-  console.log('No ML images found, falling back to general search');
-  return searchDuckDuckGo(query, count);
 }
 
 /**
