@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Upload, Search, Download, Trash2, Check, X, RefreshCw, Image as ImageIcon } from 'lucide-react';
+import { searchMercadoLibre } from '@/lib/ml-client-search';
 
 interface Product {
   id: string;
@@ -93,15 +94,42 @@ export default function Home() {
     setSearchStatuses(prev => new Map(prev).set(productId, { productId, status: 'searching' }));
     
     try {
-      const res = await fetch('/api/search', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ productId, count: 3, source: searchSource })
-      });
-      const data = await res.json();
+      let imagesFound = 0;
+
+      if (searchSource === 'mercadolibre') {
+        // Buscar en ML desde el cliente (evita bloqueo de IP)
+        const product = products.find(p => p.id === productId);
+        if (!product) throw new Error('Producto no encontrado');
+
+        const mlResult = await searchMercadoLibre(product.name, 3);
+        
+        if (mlResult.success && mlResult.products.length > 0) {
+          // Extraer URLs de imágenes
+          const imageUrls = mlResult.products.map(p => p.thumbnail);
+          
+          // Guardar imágenes en el servidor
+          const saveRes = await fetch('/api/save-images', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ productId, images: imageUrls })
+          });
+          const saveData = await saveRes.json();
+          imagesFound = saveData.images?.length || 0;
+        } else if (mlResult.error) {
+          console.error('ML search error:', mlResult.error);
+        }
+      } else {
+        // Usar búsqueda del servidor (Bing)
+        const res = await fetch('/api/search', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ productId, count: 3, source: searchSource })
+        });
+        const data = await res.json();
+        imagesFound = data.images?.length || 0;
+      }
       
       // Actualizar estado según resultado
-      const imagesFound = data.images?.length || 0;
       setSearchStatuses(prev => new Map(prev).set(productId, { 
         productId, 
         status: imagesFound > 0 ? 'success' : 'no-results',
@@ -145,12 +173,53 @@ export default function Home() {
   const searchAllProducts = async () => {
     setSearchingAll(true);
     try {
-      const res = await fetch('/api/search', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ count: 3, source: searchSource })
-      });
-      await res.json();
+      if (searchSource === 'mercadolibre') {
+        // Buscar en ML desde el cliente para cada producto sin imágenes
+        for (const product of products) {
+          if (product.imageCount === 0) {
+            setSearchStatuses(prev => new Map(prev).set(product.id, { productId: product.id, status: 'searching' }));
+            
+            const mlResult = await searchMercadoLibre(product.name, 3);
+            
+            if (mlResult.success && mlResult.products.length > 0) {
+              const imageUrls = mlResult.products.map(p => p.thumbnail);
+              await fetch('/api/save-images', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ productId: product.id, images: imageUrls })
+              });
+              
+              setSearchStatuses(prev => new Map(prev).set(product.id, { 
+                productId: product.id, 
+                status: 'success',
+                count: imageUrls.length
+              }));
+            } else {
+              setSearchStatuses(prev => new Map(prev).set(product.id, { 
+                productId: product.id, 
+                status: 'no-results'
+              }));
+            }
+            
+            // Pequeño delay para no saturar la API
+            await new Promise(resolve => setTimeout(resolve, 300));
+          }
+        }
+        
+        // Limpiar estados después de 3 segundos
+        setTimeout(() => {
+          setSearchStatuses(new Map());
+        }, 3000);
+      } else {
+        // Usar búsqueda del servidor (Bing)
+        const res = await fetch('/api/search', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ count: 3, source: searchSource })
+        });
+        await res.json();
+      }
+      
       fetchProducts();
       if (selectedProduct) {
         fetchProductImages(selectedProduct.id);
