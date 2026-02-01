@@ -18,6 +18,8 @@ interface ProductImage {
   selected: number;
 }
 
+type SearchSource = 'duckduckgo' | 'mercadolibre';
+
 export default function Home() {
   const [products, setProducts] = useState<Product[]>([]);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
@@ -25,6 +27,7 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [searchingAll, setSearchingAll] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<string>('');
+  const [searchSource, setSearchSource] = useState<SearchSource>('mercadolibre');
 
   const fetchProducts = useCallback(async () => {
     const res = await fetch('/api/products');
@@ -82,7 +85,7 @@ export default function Home() {
       const res = await fetch('/api/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ productId, count: 3 })
+        body: JSON.stringify({ productId, count: 3, source: searchSource })
       });
       const data = await res.json();
       
@@ -103,7 +106,7 @@ export default function Home() {
       const res = await fetch('/api/search', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ count: 3 })
+        body: JSON.stringify({ count: 3, source: searchSource })
       });
       await res.json();
       fetchProducts();
@@ -189,6 +192,39 @@ export default function Home() {
         {/* Actions */}
         <div className="bg-gray-800 rounded-xl p-6 mb-6">
           <h2 className="text-xl font-semibold mb-4">2. Buscar imágenes</h2>
+          
+          {/* Search Source Selector */}
+          <div className="flex items-center gap-4 mb-4">
+            <span className="text-gray-400">Fuente:</span>
+            <div className="flex rounded-lg overflow-hidden">
+              <button
+                onClick={() => setSearchSource('mercadolibre')}
+                className={`px-4 py-2 text-sm font-medium transition ${
+                  searchSource === 'mercadolibre'
+                    ? 'bg-yellow-500 text-black'
+                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                }`}
+              >
+                🛒 Mercado Libre
+              </button>
+              <button
+                onClick={() => setSearchSource('duckduckgo')}
+                className={`px-4 py-2 text-sm font-medium transition ${
+                  searchSource === 'duckduckgo'
+                    ? 'bg-orange-500 text-white'
+                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                }`}
+              >
+                🦆 DuckDuckGo
+              </button>
+            </div>
+            <span className="text-sm text-gray-500">
+              {searchSource === 'mercadolibre' 
+                ? 'Imágenes de productos reales de ML' 
+                : 'Búsqueda general de imágenes'}
+            </span>
+          </div>
+
           <div className="flex flex-wrap gap-4">
             <button
               onClick={searchAllProducts}

@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { searchImages, downloadImage } from '@/lib/image-search';
+import { searchImages, downloadImage, SearchSource } from '@/lib/image-search';
 import { getProductById, createImage, getImagesByProduct, deleteImage } from '@/lib/db';
 import { v4 as uuidv4 } from 'uuid';
 
 export async function POST(request: NextRequest) {
   try {
-    const { productId, count = 3 } = await request.json();
+    const { productId, count = 3, source = 'duckduckgo' } = await request.json();
 
     if (!productId) {
       return NextResponse.json({ error: 'Product ID required' }, { status: 400 });
@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Search for images
-    const searchResults = await searchImages(product.name, count);
+    const searchResults = await searchImages(product.name, count, source as SearchSource);
 
     if (searchResults.length === 0) {
       return NextResponse.json({ 
@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
 // Search all products that don't have images yet
 export async function PUT(request: NextRequest) {
   try {
-    const { count = 3 } = await request.json();
+    const { count = 3, source = 'duckduckgo' } = await request.json();
     const { getAllProducts } = await import('@/lib/db');
     
     const products = getAllProducts();
@@ -78,7 +78,7 @@ export async function PUT(request: NextRequest) {
       
       if (existingImages.length === 0) {
         // Search for this product
-        const searchResults = await searchImages(product.name, count);
+        const searchResults = await searchImages(product.name, count, source as SearchSource);
         
         for (const result of searchResults) {
           const imageId = uuidv4();

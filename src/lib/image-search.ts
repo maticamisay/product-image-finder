@@ -7,8 +7,78 @@ export interface SearchResult {
   title: string;
 }
 
+export type SearchSource = 'duckduckgo' | 'mercadolibre';
+
+/**
+ * Busca imágenes en Mercado Libre Argentina
+ * Usa la API pública de ML para obtener productos y sus imágenes
+ */
+export async function searchMercadoLibre(query: string, count: number = 3): Promise<SearchResult[]> {
+  try {
+    // API pública de Mercado Libre Argentina
+    const response = await fetch(
+      `https://api.mercadolibre.com/sites/MLA/search?q=${encodeURIComponent(query)}&limit=${count}`,
+      {
+        headers: {
+          'Accept': 'application/json'
+        }
+      }
+    );
+
+    if (!response.ok) {
+      console.error('Mercado Libre API error:', response.status);
+      return [];
+    }
+
+    const data = await response.json();
+
+    if (!data.results || data.results.length === 0) {
+      console.log('No results found in Mercado Libre for:', query);
+      return [];
+    }
+
+    const results: SearchResult[] = [];
+
+    // Para cada producto, obtener sus imágenes
+    for (const product of data.results.slice(0, count)) {
+      // La imagen principal está en thumbnail, pero podemos obtener mejor calidad
+      // reemplazando el tamaño en la URL
+      const imageUrl = product.thumbnail?.replace(/-I\.jpg$/, '-O.jpg') || product.thumbnail;
+      
+      if (imageUrl) {
+        results.push({
+          id: uuidv4(),
+          url: imageUrl,
+          thumbnail: product.thumbnail || imageUrl,
+          title: product.title || query
+        });
+      }
+    }
+
+    console.log(`Found ${results.length} images from Mercado Libre for: ${query}`);
+    return results;
+  } catch (error) {
+    console.error('Mercado Libre search error:', error);
+    return [];
+  }
+}
+
+/**
+ * Busca imágenes usando la fuente especificada
+ */
+export async function searchImages(
+  query: string, 
+  count: number = 3, 
+  source: SearchSource = 'duckduckgo'
+): Promise<SearchResult[]> {
+  if (source === 'mercadolibre') {
+    return searchMercadoLibre(query, count);
+  }
+  return searchDuckDuckGo(query, count);
+}
+
 // Using DuckDuckGo image search (no API key required)
-export async function searchImages(query: string, count: number = 3): Promise<SearchResult[]> {
+async function searchDuckDuckGo(query: string, count: number = 3): Promise<SearchResult[]> {
   try {
     // Use DuckDuckGo's image search via their vqd token system
     const tokenResponse = await fetch(
