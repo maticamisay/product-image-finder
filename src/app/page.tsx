@@ -20,6 +20,12 @@ interface ProductImage {
 
 type SearchSource = 'duckduckgo' | 'mercadolibre';
 
+interface SearchStatus {
+  productId: string;
+  status: 'searching' | 'success' | 'error' | 'no-results';
+  count?: number;
+}
+
 export default function Home() {
   const [products, setProducts] = useState<Product[]>([]);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
@@ -28,6 +34,8 @@ export default function Home() {
   const [searchingAll, setSearchingAll] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<string>('');
   const [searchSource, setSearchSource] = useState<SearchSource>('mercadolibre');
+  const [searchingProducts, setSearchingProducts] = useState<Set<string>>(new Set());
+  const [searchStatuses, setSearchStatuses] = useState<Map<string, SearchStatus>>(new Map());
 
   const fetchProducts = useCallback(async () => {
     const res = await fetch('/api/products');
@@ -80,7 +88,10 @@ export default function Home() {
   };
 
   const searchProductImages = async (productId: string) => {
-    setLoading(true);
+    // Agregar a productos buscando
+    setSearchingProducts(prev => new Set(prev).add(productId));
+    setSearchStatuses(prev => new Map(prev).set(productId, { productId, status: 'searching' }));
+    
     try {
       const res = await fetch('/api/search', {
         method: 'POST',
@@ -89,14 +100,45 @@ export default function Home() {
       });
       const data = await res.json();
       
+      // Actualizar estado según resultado
+      const imagesFound = data.images?.length || 0;
+      setSearchStatuses(prev => new Map(prev).set(productId, { 
+        productId, 
+        status: imagesFound > 0 ? 'success' : 'no-results',
+        count: imagesFound
+      }));
+      
       if (selectedProduct?.id === productId) {
         fetchProductImages(productId);
       }
       fetchProducts();
+      
+      // Limpiar estado después de 3 segundos
+      setTimeout(() => {
+        setSearchStatuses(prev => {
+          const next = new Map(prev);
+          next.delete(productId);
+          return next;
+        });
+      }, 3000);
+      
     } catch (err) {
       console.error('Search error:', err);
+      setSearchStatuses(prev => new Map(prev).set(productId, { productId, status: 'error' }));
+      
+      setTimeout(() => {
+        setSearchStatuses(prev => {
+          const next = new Map(prev);
+          next.delete(productId);
+          return next;
+        });
+      }, 3000);
     } finally {
-      setLoading(false);
+      setSearchingProducts(prev => {
+        const next = new Set(prev);
+        next.delete(productId);
+        return next;
+      });
     }
   };
 
@@ -281,13 +323,41 @@ export default function Home() {
                         : 'Sin imágenes'}
                     </p>
                   </div>
-                  <div className="flex gap-2 ml-2">
+                  <div className="flex gap-2 ml-2 items-center">
+                    {/* Status indicator */}
+                    {searchStatuses.get(product.id) && (
+                      <span className={`text-xs px-2 py-0.5 rounded-full ${
+                        searchStatuses.get(product.id)?.status === 'success' 
+                          ? 'bg-green-600 text-green-100' 
+                          : searchStatuses.get(product.id)?.status === 'no-results'
+                          ? 'bg-yellow-600 text-yellow-100'
+                          : searchStatuses.get(product.id)?.status === 'error'
+                          ? 'bg-red-600 text-red-100'
+                          : ''
+                      }`}>
+                        {searchStatuses.get(product.id)?.status === 'success' 
+                          ? `✓ ${searchStatuses.get(product.id)?.count} imgs`
+                          : searchStatuses.get(product.id)?.status === 'no-results'
+                          ? 'Sin resultados'
+                          : searchStatuses.get(product.id)?.status === 'error'
+                          ? 'Error'
+                          : ''}
+                      </span>
+                    )}
                     <button
                       onClick={(e) => { e.stopPropagation(); searchProductImages(product.id); }}
-                      className="p-1.5 rounded bg-gray-600 hover:bg-gray-500"
+                      disabled={searchingProducts.has(product.id)}
+                      className={`p-1.5 rounded transition ${
+                        searchingProducts.has(product.id)
+                          ? 'bg-blue-600 cursor-wait'
+                          : 'bg-gray-600 hover:bg-gray-500'
+                      }`}
                       title="Buscar imágenes"
                     >
-                      <Search className="w-4 h-4" />
+                      {searchingProducts.has(product.id) 
+                        ? <RefreshCw className="w-4 h-4 animate-spin" />
+                        : <Search className="w-4 h-4" />
+                      }
                     </button>
                     <button
                       onClick={(e) => { e.stopPropagation(); deleteProduct(product.id); }}
