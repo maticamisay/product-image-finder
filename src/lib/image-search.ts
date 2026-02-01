@@ -74,11 +74,27 @@ async function searchDuckDuckGo(query: string, count: number = 3): Promise<Searc
   return await searchBing(query, count);
 }
 
+// Dominios problemáticos que bloquean descargas
+const BLOCKED_DOMAINS = [
+  'shutterstock.com',
+  'gettyimages.com',
+  'alamy.com',
+  'istockphoto.com',
+  'dreamstime.com',
+  'depositphotos.com',
+  '123rf.com',
+  'adobe.com',
+  'stock.adobe.com',
+  'scribd',
+  'fbsbx.com',
+  'lookaside.fbsbx.com',
+];
+
 // Bing image search (scraping)
 async function searchBing(query: string, count: number): Promise<SearchResult[]> {
   try {
     const response = await fetch(
-      `https://www.bing.com/images/search?q=${encodeURIComponent(query)}&first=1&count=${count * 3}`,
+      `https://www.bing.com/images/search?q=${encodeURIComponent(query)}&first=1&count=${count * 5}`,
       {
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -104,6 +120,10 @@ async function searchBing(query: string, count: number): Promise<SearchResult[]>
       if (seenUrls.has(url)) continue;
       seenUrls.add(url);
       
+      // Skip blocked domains
+      const isBlocked = BLOCKED_DOMAINS.some(domain => url.includes(domain));
+      if (isBlocked) continue;
+      
       // Only include actual image files
       if (url.match(/\.(jpg|jpeg|png|webp|gif)/i)) {
         results.push({
@@ -126,21 +146,55 @@ async function searchBing(query: string, count: number): Promise<SearchResult[]>
 // Download image and save locally
 export async function downloadImage(url: string, filename: string): Promise<string | null> {
   try {
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-      }
-    });
+    // Intentar con varios User-Agents si falla
+    const userAgents = [
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0',
+    ];
+
+    let response: Response | null = null;
     
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
+    for (const ua of userAgents) {
+      try {
+        response = await fetch(url, {
+          headers: {
+            'User-Agent': ua,
+            'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9,es;q=0.8',
+            'Referer': 'https://www.google.com/',
+          },
+          redirect: 'follow',
+        });
+        
+        if (response.ok) break;
+      } catch (e) {
+        continue;
+      }
+    }
+    
+    if (!response || !response.ok) {
+      console.log(`Could not download image, saving URL only: ${url}`);
+      // No pudimos descargar, pero guardamos la URL para mostrar directo
+      return null;
     }
     
     const buffer = await response.arrayBuffer();
+    
+    // Verificar que sea una imagen válida (al menos 1KB)
+    if (buffer.byteLength < 1024) {
+      console.log('Image too small, probably invalid');
+      return null;
+    }
+    
     const fs = await import('fs/promises');
     const path = await import('path');
     
-    const publicPath = path.join(process.cwd(), 'public', 'images', filename);
+    // Asegurar que el directorio existe
+    const imagesDir = path.join(process.cwd(), 'public', 'images');
+    await fs.mkdir(imagesDir, { recursive: true });
+    
+    const publicPath = path.join(imagesDir, filename);
     await fs.writeFile(publicPath, Buffer.from(buffer));
     
     return `/images/${filename}`;
